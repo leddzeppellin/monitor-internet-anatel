@@ -3,7 +3,9 @@ param(
     [ValidateRange(15, 1440)]
     [int]$IntervalMinutes = 60,
     [switch]$NoInitialTest,
-    [switch]$DoNotOpenDashboard
+    [switch]$DoNotOpenDashboard,
+    # Última saída caso a verificação de assinatura falhe em um ambiente legítimo.
+    [switch]$SkipSignatureCheck
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,23 +24,98 @@ function Assert-Administrator {
     }
 }
 
+# O WinGet publica em Links\ um atalho (symlink ou stub) que não carrega a assinatura
+# da Ookla. Copiar e verificar esse atalho não faz sentido: é preciso chegar ao
+# executável real dentro de Packages\.
+function Resolve-RealPath([string]$Path) {
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    if (-not $item) { return $Path }
+    if ($item.LinkType -and $item.Target) {
+        $target = @($item.Target)[0]
+        if ($target) {
+            if (-not [System.IO.Path]::IsPathRooted($target)) {
+                $target = Join-Path (Split-Path -Parent $item.FullName) $target
+            }
+            if (Test-Path -LiteralPath $target) {
+                return (Resolve-Path -LiteralPath $target).Path
+            }
+        }
+    }
+    return $item.FullName
+}
+
+# O binário roda como SYSTEM a cada coleta e costuma vir de uma pasta gravável pelo
+# usuário (LOCALAPPDATA), então vale confirmar sua procedência. A Ookla não assina o
+# speedtest.exe do CLI e ele não traz VersionInfo, então não há como exigir Authenticode:
+# a garantia criptográfica dessa cadeia é a verificação de hash que o WinGet faz contra
+# o manifesto oficial na instalação. O que dá para checar aqui é que, se houver
+# assinatura, ela seja da Ookla, e que o executável se identifique como Speedtest.
+function Assert-Speedtest([string]$Path) {
+    $signature = Get-AuthenticodeSignature -LiteralPath $Path
+
+    if ($signature.Status -eq "Valid") {
+        if ($signature.SignerCertificate.Subject -notmatch "Ookla") {
+            throw @"
+O speedtest.exe encontrado está assinado por outra entidade.
+
+  Arquivo:   $Path
+  Assinante: $($signature.SignerCertificate.Subject)
+
+Como esse binário seria executado como SYSTEM, a instalação foi interrompida.
+"@
+        }
+        Write-Host "  Assinatura verificada: $($signature.SignerCertificate.Subject.Split(',')[0])"
+        return
+    }
+
+    # Uma assinatura presente porém quebrada (HashMismatch, NotTrusted) indica
+    # adulteração; ausência de assinatura é o comportamento normal da Ookla.
+    if ($signature.Status -ne "NotSigned") {
+        throw @"
+A assinatura digital do speedtest.exe está inválida.
+
+  Arquivo: $Path
+  Status:  $($signature.Status)
+
+Como esse binário seria executado como SYSTEM, a instalação foi interrompida.
+"@
+    }
+
+    $banner = ""
+    try {
+        $banner = (& $Path --version 2>&1 | Select-Object -First 1) -join " "
+    }
+    catch {
+        throw "Não foi possível executar $Path para identificá-lo: $($_.Exception.Message)"
+    }
+    if ("$banner" -notmatch "Speedtest by Ookla") {
+        throw @"
+O arquivo encontrado não se identifica como Speedtest da Ookla.
+
+  Arquivo:  $Path
+  Resposta: $banner
+
+Como esse binário seria executado como SYSTEM, a instalação foi interrompida.
+Baixe o Speedtest CLI em https://www.speedtest.net/apps/cli, coloque o
+speedtest.exe em "$InstallPath\bin" e execute o instalador novamente.
+"@
+    }
+    Write-Host "  Identificado: $banner"
+}
+
 function Find-Speedtest {
     $known = @(
         (Join-Path $InstallPath "bin\speedtest.exe"),
         "$env:ProgramFiles\Speedtest CLI\speedtest.exe",
-        "$env:ProgramFiles\Ookla\Speedtest CLI\speedtest.exe",
-        "$env:LOCALAPPDATA\Microsoft\WinGet\Links\speedtest.exe"
+        "$env:ProgramFiles\Ookla\Speedtest CLI\speedtest.exe"
     )
-
     foreach ($candidate in $known) {
         if ($candidate -and (Test-Path -LiteralPath $candidate)) {
             return (Resolve-Path -LiteralPath $candidate).Path
         }
     }
 
-    $command = Get-Command speedtest.exe -ErrorAction SilentlyContinue
-    if ($command) { return $command.Source }
-
+    # Antes dos atalhos: aqui está o binário assinado que o WinGet extraiu.
     $roots = @(
         "$env:LOCALAPPDATA\Microsoft\WinGet\Packages",
         "$env:ProgramFiles\WinGet\Packages"
@@ -50,6 +127,13 @@ function Find-Speedtest {
             if ($found) { return $found.FullName }
         }
     }
+
+    $link = "$env:LOCALAPPDATA\Microsoft\WinGet\Links\speedtest.exe"
+    if (Test-Path -LiteralPath $link) { return (Resolve-RealPath $link) }
+
+    $command = Get-Command speedtest.exe -ErrorAction SilentlyContinue
+    if ($command) { return (Resolve-RealPath $command.Source) }
+
     return $null
 }
 
@@ -158,16 +242,13 @@ if (-not $speedtestPath) {
     throw "O Speedtest CLI foi instalado, mas speedtest.exe não foi localizado."
 }
 
-# O binário será executado como SYSTEM a cada coleta e pode ter sido localizado em uma
-# pasta gravável pelo usuário (LOCALAPPDATA), então a assinatura é conferida antes.
-$signature = Get-AuthenticodeSignature -LiteralPath $speedtestPath
-if ($signature.Status -ne "Valid") {
-    throw "A assinatura digital de $speedtestPath é inválida (status: $($signature.Status))."
+$speedtestPath = Resolve-RealPath $speedtestPath
+if ($SkipSignatureCheck) {
+    Write-Warning "Verificação de procedência ignorada por -SkipSignatureCheck."
 }
-if ($signature.SignerCertificate.Subject -notmatch "Ookla") {
-    throw "O speedtest.exe encontrado não está assinado pela Ookla: $($signature.SignerCertificate.Subject)"
+else {
+    Assert-Speedtest $speedtestPath
 }
-Write-Host "  Assinatura verificada: $($signature.SignerCertificate.Subject.Split(',')[0])"
 
 $bundledSpeedtest = Join-Path $InstallPath "bin\speedtest.exe"
 $sourceSpeedtest = (Resolve-Path -LiteralPath $speedtestPath).Path

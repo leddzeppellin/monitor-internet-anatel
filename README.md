@@ -184,7 +184,12 @@ Para remover tudo, inclusive o histórico:
   **não** armazena o seu IP público.
 - A pasta de instalação recebe permissões explícitas: apenas administradores e
   `SYSTEM` podem alterar os scripts, que são executados com privilégio elevado.
-- A assinatura digital do `speedtest.exe` é verificada antes do uso.
+- A procedência do `speedtest.exe` é conferida antes do uso. A Ookla **não**
+  assina digitalmente o executável do CLI, então a garantia criptográfica dessa
+  cadeia é a verificação de hash que o WinGet faz contra o manifesto oficial
+  durante a instalação. O instalador recusa o binário se ele estiver assinado por
+  outra entidade, se a assinatura estiver quebrada ou se ele não se identificar
+  como Speedtest da Ookla.
 
 O `speedtest.exe` é distribuído pela Ookla e está sujeito aos termos dela; a
 instalação aceita a licença e o GDPR de forma não interativa.

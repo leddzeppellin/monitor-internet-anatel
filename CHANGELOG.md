@@ -2,6 +2,20 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [1.2.1] - 2026-07-30
+
+### Corrigido
+
+- A instalação era interrompida com `NotSigned` ao encontrar o Speedtest CLI. A
+  verificação exigia assinatura Authenticode da Ookla, mas a Ookla não assina o
+  executável do CLI — e o caminho conferido era o atalho de 0 byte que o WinGet
+  publica em `Links\`, não o binário real. Agora o atalho é resolvido para o
+  arquivo em `Packages\` e a procedência é confirmada de outra forma: assinatura
+  de terceiro ou quebrada continua bloqueando, e um binário sem assinatura
+  precisa se identificar como Speedtest da Ookla ao ser executado.
+- `-SkipSignatureCheck` foi adicionado como saída para ambientes onde a
+  verificação não se aplica.
+
 ## [1.2.0] - 2026-07-30
 
 ### Adicionado
@@ -52,8 +66,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - A pasta de instalação passou a receber ACL explícita, sem herdar as permissões
   da raiz do disco. Isso fecha a possibilidade de uma conta sem privilégio
   substituir um script executado como `SYSTEM` a cada coleta.
-- A assinatura digital do `speedtest.exe` é verificada antes de ele ser copiado
-  para a pasta de instalação.
+- A procedência do `speedtest.exe` é conferida antes de ele ser copiado para a
+  pasta de instalação. Veja a correção em 1.2.1.
 
 ## [1.0.0]
 
