@@ -1,0 +1,166 @@
+# Internet Monitor para Windows
+
+Mede a sua conexão de tempos em tempos com o Speedtest CLI da Ookla, guarda o
+histórico em CSV e mostra tudo em um painel local — inclusive **quanto da
+velocidade contratada o seu provedor está realmente entregando**, segundo os
+limites da Resolução Anatel 574/2011.
+
+Roda inteiramente na sua máquina: nenhuma porta é aberta, nenhum dado é enviado
+a lugar nenhum.
+
+## Por que existe
+
+Reclamar de internet lenta sem dados é uma discussão perdida. Com algumas
+centenas de medições carimbadas, a conversa com o provedor muda de figura: o
+painel mostra em que horários a conexão degrada, com que frequência ela cai e se
+a média do período fica abaixo do mínimo que a Anatel exige.
+
+## Requisitos
+
+- Windows 10 ou 11
+- Windows PowerShell 5.1 ou superior
+- WinGet (já incluso no Windows 10/11 atualizado)
+- Conta de administrador **apenas durante a instalação**
+
+Depois de instalado, o monitor roda como `SYSTEM`. Sua conta do Windows não
+precisa ter senha.
+
+## Instalação
+
+1. Baixe e extraia o repositório.
+2. Clique com o botão direito em `Instalar.cmd`.
+3. Escolha **Executar como administrador** e confirme a janela do Windows.
+4. Aguarde a conclusão. A primeira medição pode levar alguns minutos.
+
+Dois atalhos são criados na Área de Trabalho:
+
+| Atalho | O que faz |
+|---|---|
+| **Internet Monitor** | Abre o painel com o histórico |
+| **Internet Monitor - Testar agora** | Executa uma medição imediata e abre o painel |
+
+> **Consumo de dados:** cada Speedtest transfere uma quantidade relevante de
+> dados — em um link de 500 Mbps, tipicamente entre 500 MB e 1,5 GB. No intervalo
+> padrão de 60 minutos isso pode passar de 20 GB por dia. Em conexões com
+> franquia, aumente o intervalo.
+
+## Conformidade com o contrato
+
+Informe a velocidade contratada em `C:\InternetMonitor\config.json`:
+
+```json
+{
+  "contratadoDownloadMbps": 700,
+  "contratadoUploadMbps": 350
+}
+```
+
+O painel passa a exibir dois indicadores por sentido, conforme a Resolução
+574/2011:
+
+- **Velocidade média** do período deve alcançar no mínimo **80%** da contratada.
+- **Velocidade instantânea** deve alcançar **40%** da contratada em pelo menos
+  **95%** das medições.
+
+Deixe os valores em `0` para ocultar o painel.
+
+## Uso
+
+- Os botões 24h, 7 dias, 30 dias e Tudo mudam o período analisado.
+- Faixas verticais avermelhadas nos gráficos marcam coletas que falharam.
+- **Apenas falhas** filtra a tabela para investigar problemas.
+- **Abrir CSV** dá acesso ao histórico completo.
+- O painel se atualiza sozinho, preservando o período selecionado.
+
+Arquivos gerados:
+
+| Caminho | Conteúdo |
+|---|---|
+| `C:\InternetMonitor\data\historico-internet.csv` | Histórico completo |
+| `C:\InternetMonitor\logs\coleta-erros.log` | Erros de coleta |
+| `C:\InternetMonitor\config.json` | Limites e velocidade contratada |
+
+A tarefa agendada aparece como `InternetMonitor - Coleta`.
+
+## Alterar a frequência
+
+```powershell
+.\Install-InternetMonitor.ps1 -IntervalMinutes 120
+```
+
+Atualiza a instalação preservando o histórico e as configurações. O intervalo
+aceito vai de 15 a 1440 minutos; 60 ou 120 são boas escolhas. O aviso de dados
+desatualizados acompanha o intervalo automaticamente, a menos que
+`staleAfterMinutes` tenha sido personalizado.
+
+## Limites do painel
+
+Ainda em `config.json`, para destaque visual dos cartões:
+
+```json
+{
+  "downloadMinMbps": 500,
+  "uploadMinMbps": 500,
+  "pingMaxMs": 50,
+  "jitterMaxMs": 20,
+  "packetLossMaxPct": 1
+}
+```
+
+Esses valores não alteram a medição.
+
+## Estrutura do projeto
+
+```
+Instalar.cmd / Desinstalar.cmd     Atalhos com elevação automática
+Install-InternetMonitor.ps1        Instalador: pastas, ACLs, tarefa e atalhos
+Uninstall-InternetMonitor.ps1      Desinstalador (preserva o histórico)
+src/
+  Collect-Internet.ps1             Executa o Speedtest e grava o CSV
+  Update-DashboardData.ps1         Converte o CSV em data.js
+  Open-Dashboard.ps1               Atualiza os dados e abre o painel
+  Test-Now.ps1                     Medição sob demanda
+  config.json                      Configuração padrão
+  dashboard/                       Painel (HTML, CSS e JS sem dependências)
+```
+
+## Diagnóstico
+
+| Sintoma | O que verificar |
+|---|---|
+| Painel não abre | Execute o atalho novamente |
+| Sem medições novas | Confirme no Agendador se `InternetMonitor - Coleta` está habilitada |
+| Status `Erro` no painel | Consulte `logs\coleta-erros.log` |
+| Limites não mudaram | Feche a aba e reabra pelo atalho |
+| Resultado baixo isolado | Outro equipamento, Wi-Fi, VPN ou backup pode ter usado a conexão. A coluna **Conexão** ajuda a distinguir Wi-Fi de cabo |
+
+Perda de pacotes em um teste isolado costuma ser transitória; investigue quando
+for recorrente.
+
+## Desinstalação
+
+Clique com o botão direito em `Desinstalar.cmd` e escolha **Executar como
+administrador**. O histórico é preservado em `C:\InternetMonitor\data`.
+
+Para remover tudo, inclusive o histórico:
+
+```powershell
+.\Uninstall-InternetMonitor.ps1 -RemoveHistory
+```
+
+## Privacidade e segurança
+
+- O painel é um arquivo local aberto via `file://`. Nenhuma porta de rede é
+  aberta e nada é enviado para fora da máquina.
+- O CSV registra provedor, servidor usado e a URL do resultado na Ookla, mas
+  **não** armazena o seu IP público.
+- A pasta de instalação recebe permissões explícitas: apenas administradores e
+  `SYSTEM` podem alterar os scripts, que são executados com privilégio elevado.
+- A assinatura digital do `speedtest.exe` é verificada antes do uso.
+
+O `speedtest.exe` é distribuído pela Ookla e está sujeito aos termos dela; a
+instalação aceita a licença e o GDPR de forma não interativa.
+
+## Licença
+
+[MIT](LICENSE).

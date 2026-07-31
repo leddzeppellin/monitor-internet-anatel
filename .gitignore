@@ -1,0 +1,21 @@
+# Histórico e logs gerados em tempo de execução; podem conter provedor e servidores usados.
+data/
+logs/
+*.bak.csv
+historico-*.tmp
+
+# Binário baixado pelo WinGet durante a instalação.
+bin/
+*.exe
+
+# Pasta de pré-visualização usada durante o desenvolvimento.
+.preview/
+
+# Configuração local de ferramentas.
+.claude/settings.local.json
+
+# Sistema operacional e editores.
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

@@ -1,0 +1,214 @@
+﻿[CmdletBinding()]
+param(
+    [string]$Root = $PSScriptRoot
+)
+
+$ErrorActionPreference = "Stop"
+$DataPath = Join-Path $Root "data"
+$LogPath = Join-Path $Root "logs"
+$CsvPath = Join-Path $DataPath "historico-internet.csv"
+$SpeedtestExe = Join-Path $Root "bin\speedtest.exe"
+$DashboardUpdater = Join-Path $Root "Update-DashboardData.ps1"
+$mutex = $null
+$hasLock = $false
+
+function Write-ErrorLog([string]$Message) {
+    try {
+        New-Item -ItemType Directory -Path $LogPath -Force | Out-Null
+        $cleanMessage = $Message -replace '[\r\n]+', ' '
+        $logLine = "{0} - {1}" -f (Get-Date).ToString("yyyy-MM-dd HH:mm:ss"), $cleanMessage
+        Add-Content -LiteralPath (Join-Path $LogPath "coleta-erros.log") -Value $logLine -Encoding UTF8
+    }
+    catch {
+        # Sem permissão de escrita no log; o erro ainda será gravado no CSV.
+    }
+}
+
+# Ordem canônica das colunas do histórico. Alterar esta lista dispara a migração
+# automática do CSV existente em Save-Record.
+$Schema = @(
+    "DataHora", "DownloadMbps", "UploadMbps", "PingMs", "JitterMs", "PerdaPacotesPct",
+    "ISP", "Servidor", "ServidorID", "LocalServidor", "Conexao", "URLResultado",
+    "Status", "Mensagem"
+)
+
+function ConvertTo-SchemaRow([psobject]$Row) {
+    $ordered = [ordered]@{}
+    foreach ($column in $Schema) {
+        $property = $Row.PSObject.Properties[$column]
+        $ordered[$column] = if ($property) { $property.Value } else { "" }
+    }
+    [PSCustomObject]$ordered
+}
+
+function Test-CurrentSchema {
+    $firstRow = Import-Csv -LiteralPath $CsvPath | Select-Object -First 1
+    if (-not $firstRow) { return $false }
+    $columns = @($firstRow.PSObject.Properties.Name)
+    if ($columns.Count -ne $Schema.Count) { return $false }
+    for ($i = 0; $i -lt $Schema.Count; $i++) {
+        if ($columns[$i] -ne $Schema[$i]) { return $false }
+    }
+    return $true
+}
+
+function Save-Record([psobject]$Record) {
+    New-Item -ItemType Directory -Path $DataPath -Force | Out-Null
+    $row = ConvertTo-SchemaRow $Record
+
+    if (-not (Test-Path -LiteralPath $CsvPath)) {
+        $row | Export-Csv -LiteralPath $CsvPath -NoTypeInformation -Encoding UTF8
+        return
+    }
+
+    if (Test-CurrentSchema) {
+        $row | Export-Csv -LiteralPath $CsvPath -Append -NoTypeInformation -Encoding UTF8
+        return
+    }
+
+    # Histórico gravado por uma versão anterior: reescreve no schema atual, sem perder
+    # nenhuma linha e guardando um backup antes de substituir o arquivo.
+    Write-ErrorLog "Migrando o histórico para o schema atual do CSV."
+    $migrated = @(Import-Csv -LiteralPath $CsvPath | ForEach-Object { ConvertTo-SchemaRow $_ })
+    $migrated += $row
+    Copy-Item -LiteralPath $CsvPath -Destination (Join-Path $DataPath "historico-internet.bak.csv") -Force
+    $temporary = Join-Path $DataPath ("historico-{0}.tmp" -f [guid]::NewGuid())
+    try {
+        $migrated | Export-Csv -LiteralPath $temporary -NoTypeInformation -Encoding UTF8
+        Move-Item -LiteralPath $temporary -Destination $CsvPath -Force
+    }
+    finally {
+        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Wi-Fi e Ethernet produzem resultados muito diferentes; sem essa informação um
+# resultado ruim é ambíguo.
+function Get-ConnectionKind {
+    try {
+        $route = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction Stop |
+            Sort-Object -Property RouteMetric |
+            Select-Object -First 1
+        if (-not $route) { return "" }
+        $adapter = Get-NetAdapter -InterfaceIndex $route.InterfaceIndex -ErrorAction Stop
+        if (-not $adapter) { return "" }
+        if ($adapter.PhysicalMediaType -like "*802.11*") { return "Wi-Fi" }
+        if ($adapter.PhysicalMediaType -like "*802.3*" -or $adapter.MediaType -eq "802.3") {
+            return "Ethernet"
+        }
+        return [string]$adapter.InterfaceDescription
+    }
+    catch {
+        return ""
+    }
+}
+
+function Update-Dashboard {
+    try {
+        if (-not (Test-Path -LiteralPath $DashboardUpdater)) {
+            throw "Atualizador do dashboard não encontrado em $DashboardUpdater"
+        }
+        & $DashboardUpdater -Root $Root
+    }
+    catch {
+        Write-ErrorLog ("Falha ao atualizar o dashboard: {0}" -f $_.Exception.Message)
+    }
+}
+
+# As colunas ausentes são preenchidas por ConvertTo-SchemaRow.
+function New-FailureRecord([string]$Message) {
+    [PSCustomObject]@{
+        DataHora = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        Conexao = Get-ConnectionKind
+        Status = "Erro"
+        Mensagem = $Message
+    }
+}
+
+try {
+    # O namespace Global\ exige SeCreateGlobalPrivilege. Quando o script roda sob uma
+    # conta padrão (teste manual), recorremos a um mutex local em vez de abortar.
+    try {
+        $mutex = New-Object System.Threading.Mutex($false, "Global\InternetMonitorCollector")
+    }
+    catch {
+        $mutex = New-Object System.Threading.Mutex($false, "Local\InternetMonitorCollector")
+    }
+    $hasLock = $mutex.WaitOne(0)
+    if (-not $hasLock) { exit 0 }
+    if (-not (Test-Path -LiteralPath $SpeedtestExe)) {
+        throw "speedtest.exe não encontrado em $SpeedtestExe"
+    }
+
+    $tempOut = Join-Path $env:TEMP ("internet-monitor-{0}.json" -f [guid]::NewGuid())
+    $tempErr = Join-Path $env:TEMP ("internet-monitor-{0}.log" -f [guid]::NewGuid())
+    try {
+        $process = Start-Process -FilePath $SpeedtestExe -ArgumentList @(
+            "--accept-license", "--accept-gdpr", "--format=json"
+        ) -NoNewWindow -PassThru -RedirectStandardOutput $tempOut -RedirectStandardError $tempErr
+
+        # Cachear o handle garante que ExitCode fique disponível após a saída do processo.
+        $process.Handle | Out-Null
+
+        if (-not $process.WaitForExit(480000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "O Speedtest excedeu o limite de 8 minutos."
+        }
+        $process.WaitForExit()
+        $stdout = Get-Content -LiteralPath $tempOut -Raw -ErrorAction SilentlyContinue
+        $stderr = Get-Content -LiteralPath $tempErr -Raw -ErrorAction SilentlyContinue
+        if ($process.ExitCode -ne 0) {
+            throw "Speedtest retornou código $($process.ExitCode): $stderr"
+        }
+        if (-not $stdout) { throw "O Speedtest não retornou dados." }
+
+        $result = $stdout | ConvertFrom-Json
+        $loss = if ($null -ne $result.packetLoss) {
+            [math]::Round([double]$result.packetLoss, 2)
+        } else { "" }
+        $jitter = if ($null -ne $result.ping.jitter) {
+            [math]::Round([double]$result.ping.jitter, 2)
+        } else { "" }
+
+        $record = [PSCustomObject][ordered]@{
+            DataHora = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+            DownloadMbps = [math]::Round(([double]$result.download.bandwidth * 8 / 1000000), 2)
+            UploadMbps = [math]::Round(([double]$result.upload.bandwidth * 8 / 1000000), 2)
+            PingMs = [math]::Round([double]$result.ping.latency, 2)
+            JitterMs = $jitter
+            PerdaPacotesPct = $loss
+            ISP = [string]$result.isp
+            Servidor = [string]$result.server.name
+            ServidorID = [string]$result.server.id
+            LocalServidor = [string]$result.server.location
+            Conexao = Get-ConnectionKind
+            URLResultado = [string]$result.result.url
+            Status = "Sucesso"
+            Mensagem = ""
+        }
+        Save-Record $record
+        Update-Dashboard
+    }
+    finally {
+        Remove-Item -LiteralPath $tempOut -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $tempErr -Force -ErrorAction SilentlyContinue
+    }
+}
+catch {
+    $message = $_.Exception.Message -replace '[\r\n]+', ' '
+    Write-ErrorLog $message
+    try {
+        Save-Record (New-FailureRecord -Message $message)
+        Update-Dashboard
+    }
+    catch {
+        Write-ErrorLog ("Falha ao registrar o erro no histórico: {0}" -f $_.Exception.Message)
+    }
+    exit 1
+}
+finally {
+    if ($mutex) {
+        if ($hasLock) { $mutex.ReleaseMutex() }
+        $mutex.Dispose()
+    }
+}
