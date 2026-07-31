@@ -23,6 +23,7 @@ $desktop = [Environment]::GetFolderPath("Desktop")
 $shortcutNames = @(
     "Internet Monitor.lnk",
     "Internet Monitor - Testar agora.lnk",
+    "Internet Monitor - Configurar.lnk",
     "Internet Monitor - Escolher servidor.lnk"
 )
 foreach ($name in $shortcutNames) {

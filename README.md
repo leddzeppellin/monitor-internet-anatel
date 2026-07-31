@@ -38,7 +38,10 @@ Três atalhos são criados na Área de Trabalho:
 |---|---|
 | **Internet Monitor** | Abre o painel com o histórico |
 | **Internet Monitor - Testar agora** | Executa uma medição imediata e abre o painel |
-| **Internet Monitor - Escolher servidor** | Lista os servidores próximos e fixa um deles |
+| **Internet Monitor - Configurar** | Menu para ajustar intervalo, plano, servidor e limites |
+
+Você não precisa abrir a pasta de instalação nem o HTML manualmente: o primeiro
+atalho já faz isso, atualizando os dados antes de exibir o painel.
 
 > **Consumo de dados:** cada Speedtest transfere uma quantidade relevante de
 > dados — em um link de 500 Mbps, tipicamente entre 500 MB e 1,5 GB. No intervalo
@@ -77,8 +80,8 @@ atrapalha a comparação ao longo do tempo: uma queda no gráfico pode ser
 degradação real da sua conexão **ou** apenas outro servidor tendo sido
 escolhido.
 
-Use o atalho **Internet Monitor - Escolher servidor** para listar os servidores
-próximos e fixar um deles. Ou informe o ID direto na configuração:
+Use o atalho **Internet Monitor - Configurar**, opção 4, para listar os
+servidores próximos e fixar um deles. Ou informe o ID direto na configuração:
 
 ```json
 {
@@ -109,16 +112,26 @@ Arquivos gerados:
 
 A tarefa agendada aparece como `InternetMonitor - Coleta`.
 
-## Alterar a frequência
+## Alterar a frequência das medições
+
+Pelo atalho **Internet Monitor - Configurar**, opção 1. O Windows pedirá
+confirmação de administrador, porque alterar a tarefa agendada exige elevação.
+
+O intervalo aceito vai de 15 a 1440 minutos; 60 ou 120 são boas escolhas.
+Intervalos curtos consomem franquia rapidamente — veja o aviso de consumo acima.
+O limite do aviso de "dados desatualizados" acompanha o intervalo
+automaticamente, a menos que `staleAfterMinutes` tenha sido personalizado.
+
+O mesmo menu ajusta o plano contratado, o servidor de teste e os limites do
+painel, sem precisar editar JSON à mão.
+
+Pela linha de comando, reinstalando:
 
 ```powershell
 .\Install-InternetMonitor.ps1 -IntervalMinutes 120
 ```
 
-Atualiza a instalação preservando o histórico e as configurações. O intervalo
-aceito vai de 15 a 1440 minutos; 60 ou 120 são boas escolhas. O aviso de dados
-desatualizados acompanha o intervalo automaticamente, a menos que
-`staleAfterMinutes` tenha sido personalizado.
+Isso preserva o histórico e as configurações existentes.
 
 ## Limites do painel
 
@@ -147,6 +160,7 @@ src/
   Update-DashboardData.ps1         Converte o CSV em data.js
   Open-Dashboard.ps1               Atualiza os dados e abre o painel
   Test-Now.ps1                     Medição sob demanda
+  Configure-Monitor.ps1            Menu de configuração
   List-Servers.ps1                 Lista e fixa o servidor de teste
   config.json                      Configuração padrão
   dashboard/                       Painel (HTML, CSS e JS sem dependências)

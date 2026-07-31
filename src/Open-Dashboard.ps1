@@ -1,6 +1,14 @@
-﻿$ErrorActionPreference = "Stop"
-$root = $PSScriptRoot
-$dashboard = Join-Path $PSScriptRoot "dashboard\index.html"
+﻿[CmdletBinding()]
+param(
+    [string]$Root
+)
+
+$ErrorActionPreference = "Stop"
+# Com -File, o padrão de um parâmetro é avaliado antes de $PSScriptRoot existir.
+if (-not $Root) { $Root = $PSScriptRoot }
+
+$root = $Root
+$dashboard = Join-Path $root "dashboard\index.html"
 $dashboardUpdater = Join-Path $root "Update-DashboardData.ps1"
 $logPath = Join-Path $root "logs"
 

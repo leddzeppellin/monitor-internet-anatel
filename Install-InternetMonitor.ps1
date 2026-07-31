@@ -265,6 +265,7 @@ Write-Step "Copiando os componentes"
 $sourcePath = Join-Path $PSScriptRoot "src"
 $files = @(
     "Collect-Internet.ps1",
+    "Configure-Monitor.ps1",
     "List-Servers.ps1",
     "Open-Dashboard.ps1",
     "Test-Now.ps1",
@@ -311,9 +312,13 @@ $powerShellExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe
 $collectorAction = New-ScheduledTaskAction -Execute $powerShellExe -Argument (
     '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $InstallPath "Collect-Internet.ps1")
 )
-$collectorTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) `
+# Trigger diário repetindo a cada N minutos ao longo de 24 horas. Uma repetição única
+# de duração muito longa (anos) é aceita pelo cmdlet mas o Agendador pode descartá-la,
+# deixando a tarefa sem registro nenhum.
+$collectorTrigger = New-ScheduledTaskTrigger -Daily -At "00:00"
+$collectorTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At "00:00" `
     -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes) `
-    -RepetitionDuration (New-TimeSpan -Days 3650)
+    -RepetitionDuration (New-TimeSpan -Hours 24)).Repetition
 $collectorPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 $collectorSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
     -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
@@ -321,6 +326,15 @@ Register-ScheduledTask -TaskName $TaskCollector -Action $collectorAction -Trigge
     -Principal $collectorPrincipal -Settings $collectorSettings -Description (
         "Executa o Speedtest CLI a cada $IntervalMinutes minutos e grava o histórico local."
     ) -Force | Out-Null
+
+# O registro pode ser aceito e mesmo assim não resultar em tarefa: sem esta conferência
+# a instalação terminaria "com sucesso" e nenhuma coleta automática aconteceria.
+$registered = Get-ScheduledTask -TaskName $TaskCollector -ErrorAction SilentlyContinue
+if (-not $registered) {
+    throw "A tarefa '$TaskCollector' não foi criada. A coleta automática não funcionaria."
+}
+Write-Host ("  Tarefa registrada: {0} (a cada {1} min, estado {2})" -f
+    $TaskCollector, $IntervalMinutes, $registered.State)
 
 Write-Step "Criando os atalhos na Área de Trabalho"
 $desktop = [Environment]::GetFolderPath("Desktop")
@@ -337,10 +351,15 @@ function New-DesktopShortcut([string]$Name, [string]$Script, [string]$WindowStyl
 }
 
 New-DesktopShortcut "Internet Monitor.lnk" "Open-Dashboard.ps1" "Hidden" 0
-# A medição sob demanda e a escolha de servidor são interativas, então a janela
-# precisa ficar visível.
+# A medição sob demanda e a configuração são interativas, então a janela fica visível.
 New-DesktopShortcut "Internet Monitor - Testar agora.lnk" "Test-Now.ps1" "Normal" 4
-New-DesktopShortcut "Internet Monitor - Escolher servidor.lnk" "List-Servers.ps1" "Normal" 22
+New-DesktopShortcut "Internet Monitor - Configurar.lnk" "Configure-Monitor.ps1" "Normal" 22
+
+# O atalho de servidor foi absorvido pelo menu de configuração.
+$obsoleteShortcut = Join-Path $desktop "Internet Monitor - Escolher servidor.lnk"
+if (Test-Path -LiteralPath $obsoleteShortcut) {
+    Remove-Item -LiteralPath $obsoleteShortcut -Force -ErrorAction SilentlyContinue
+}
 
 if (-not $NoInitialTest) {
     Write-Step "Executando a primeira medição (pode levar alguns minutos)"

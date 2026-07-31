@@ -2,6 +2,26 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [1.3.0] - 2026-07-30
+
+### Adicionado
+
+- Atalho **Internet Monitor - Configurar**: menu para ajustar o intervalo entre
+  medições, o plano contratado, a velocidade contratada, o servidor de teste e os
+  limites do painel, sem editar JSON. A alteração do intervalo eleva privilégio
+  automaticamente, já que mexe na tarefa agendada.
+- O menu mostra o estado da coleta automática e recria a tarefa agendada quando
+  ela estiver faltando.
+- O atalho "Escolher servidor" foi absorvido pelo menu e é removido na
+  atualização.
+
+### Corrigido
+
+- A tarefa agendada podia não ser criada mesmo com a instalação relatando
+  sucesso, deixando o monitor sem nenhuma coleta automática. O gatilho passou a
+  ser diário com repetição de 24 horas, em vez de uma repetição única com duração
+  de 3650 dias, e o instalador agora confirma o registro antes de prosseguir.
+
 ## [1.2.2] - 2026-07-30
 
 ### Corrigido
