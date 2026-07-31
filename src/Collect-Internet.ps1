@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 $DataPath = Join-Path $Root "data"
 $LogPath = Join-Path $Root "logs"
 $CsvPath = Join-Path $DataPath "historico-internet.csv"
+$ConfigPath = Join-Path $Root "config.json"
 $SpeedtestExe = Join-Path $Root "bin\speedtest.exe"
 $DashboardUpdater = Join-Path $Root "Update-DashboardData.ps1"
 $mutex = $null
@@ -82,6 +83,54 @@ function Save-Record([psobject]$Record) {
     }
 }
 
+function Get-FixedServerId {
+    if (-not (Test-Path -LiteralPath $ConfigPath)) { return 0 }
+    try {
+        $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $id = [int]$config.servidorFixoId
+        if ($id -gt 0) { return $id }
+    }
+    catch {
+        Write-ErrorLog ("Não foi possível ler o servidor fixo do config.json: {0}" -f $_.Exception.Message)
+    }
+    return 0
+}
+
+# Executa o Speedtest e devolve stdout. Com um servidor fixo configurado, uma
+# indisponibilidade momentânea dele interromperia o monitoramento por completo, então
+# o teste é refeito em modo automático antes de considerar a coleta perdida.
+function Invoke-Speedtest([int]$ServerId) {
+    $tempOut = Join-Path $env:TEMP ("internet-monitor-{0}.json" -f [guid]::NewGuid())
+    $tempErr = Join-Path $env:TEMP ("internet-monitor-{0}.log" -f [guid]::NewGuid())
+    try {
+        $arguments = @("--accept-license", "--accept-gdpr", "--format=json")
+        if ($ServerId -gt 0) { $arguments += "--server-id=$ServerId" }
+
+        $process = Start-Process -FilePath $SpeedtestExe -ArgumentList $arguments `
+            -NoNewWindow -PassThru -RedirectStandardOutput $tempOut -RedirectStandardError $tempErr
+
+        # Cachear o handle garante que ExitCode fique disponível após a saída do processo.
+        $process.Handle | Out-Null
+
+        if (-not $process.WaitForExit(480000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "O Speedtest excedeu o limite de 8 minutos."
+        }
+        $process.WaitForExit()
+        $stdout = Get-Content -LiteralPath $tempOut -Raw -ErrorAction SilentlyContinue
+        $stderr = Get-Content -LiteralPath $tempErr -Raw -ErrorAction SilentlyContinue
+        if ($process.ExitCode -ne 0) {
+            throw "Speedtest retornou código $($process.ExitCode): $stderr"
+        }
+        if (-not $stdout) { throw "O Speedtest não retornou dados." }
+        return $stdout
+    }
+    finally {
+        Remove-Item -LiteralPath $tempOut -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $tempErr -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # Wi-Fi e Ethernet produzem resultados muito diferentes; sem essa informação um
 # resultado ruim é ambíguo.
 function Get-ConnectionKind {
@@ -140,59 +189,45 @@ try {
         throw "speedtest.exe não encontrado em $SpeedtestExe"
     }
 
-    $tempOut = Join-Path $env:TEMP ("internet-monitor-{0}.json" -f [guid]::NewGuid())
-    $tempErr = Join-Path $env:TEMP ("internet-monitor-{0}.log" -f [guid]::NewGuid())
+    $fixedServerId = Get-FixedServerId
     try {
-        $process = Start-Process -FilePath $SpeedtestExe -ArgumentList @(
-            "--accept-license", "--accept-gdpr", "--format=json"
-        ) -NoNewWindow -PassThru -RedirectStandardOutput $tempOut -RedirectStandardError $tempErr
-
-        # Cachear o handle garante que ExitCode fique disponível após a saída do processo.
-        $process.Handle | Out-Null
-
-        if (-not $process.WaitForExit(480000)) {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            throw "O Speedtest excedeu o limite de 8 minutos."
-        }
-        $process.WaitForExit()
-        $stdout = Get-Content -LiteralPath $tempOut -Raw -ErrorAction SilentlyContinue
-        $stderr = Get-Content -LiteralPath $tempErr -Raw -ErrorAction SilentlyContinue
-        if ($process.ExitCode -ne 0) {
-            throw "Speedtest retornou código $($process.ExitCode): $stderr"
-        }
-        if (-not $stdout) { throw "O Speedtest não retornou dados." }
-
-        $result = $stdout | ConvertFrom-Json
-        $loss = if ($null -ne $result.packetLoss) {
-            [math]::Round([double]$result.packetLoss, 2)
-        } else { "" }
-        $jitter = if ($null -ne $result.ping.jitter) {
-            [math]::Round([double]$result.ping.jitter, 2)
-        } else { "" }
-
-        $record = [PSCustomObject][ordered]@{
-            DataHora = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-            DownloadMbps = [math]::Round(([double]$result.download.bandwidth * 8 / 1000000), 2)
-            UploadMbps = [math]::Round(([double]$result.upload.bandwidth * 8 / 1000000), 2)
-            PingMs = [math]::Round([double]$result.ping.latency, 2)
-            JitterMs = $jitter
-            PerdaPacotesPct = $loss
-            ISP = [string]$result.isp
-            Servidor = [string]$result.server.name
-            ServidorID = [string]$result.server.id
-            LocalServidor = [string]$result.server.location
-            Conexao = Get-ConnectionKind
-            URLResultado = [string]$result.result.url
-            Status = "Sucesso"
-            Mensagem = ""
-        }
-        Save-Record $record
-        Update-Dashboard
+        $stdout = Invoke-Speedtest -ServerId $fixedServerId
     }
-    finally {
-        Remove-Item -LiteralPath $tempOut -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $tempErr -Force -ErrorAction SilentlyContinue
+    catch {
+        if ($fixedServerId -le 0) { throw }
+        Write-ErrorLog (
+            "O servidor fixo {0} falhou ({1}). Refazendo o teste em modo automático." -f
+            $fixedServerId, ($_.Exception.Message -replace '[\r\n]+', ' ')
+        )
+        $stdout = Invoke-Speedtest -ServerId 0
     }
+
+    $result = $stdout | ConvertFrom-Json
+    $loss = if ($null -ne $result.packetLoss) {
+        [math]::Round([double]$result.packetLoss, 2)
+    } else { "" }
+    $jitter = if ($null -ne $result.ping.jitter) {
+        [math]::Round([double]$result.ping.jitter, 2)
+    } else { "" }
+
+    $record = [PSCustomObject][ordered]@{
+        DataHora = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        DownloadMbps = [math]::Round(([double]$result.download.bandwidth * 8 / 1000000), 2)
+        UploadMbps = [math]::Round(([double]$result.upload.bandwidth * 8 / 1000000), 2)
+        PingMs = [math]::Round([double]$result.ping.latency, 2)
+        JitterMs = $jitter
+        PerdaPacotesPct = $loss
+        ISP = [string]$result.isp
+        Servidor = [string]$result.server.name
+        ServidorID = [string]$result.server.id
+        LocalServidor = [string]$result.server.location
+        Conexao = Get-ConnectionKind
+        URLResultado = [string]$result.result.url
+        Status = "Sucesso"
+        Mensagem = ""
+    }
+    Save-Record $record
+    Update-Dashboard
 }
 catch {
     $message = $_.Exception.Message -replace '[\r\n]+', ' '

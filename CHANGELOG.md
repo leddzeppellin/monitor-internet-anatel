@@ -2,6 +2,19 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [1.2.0] - 2026-07-30
+
+### Adicionado
+
+- **Servidor de teste fixo** (`servidorFixoId`): mantém a mesma referência entre
+  as medições, para que variações no gráfico reflitam a conexão e não a troca de
+  servidor. Se o servidor fixado estiver indisponível, o teste é refeito em modo
+  automático e o desvio é registrado no log.
+- Atalho **Internet Monitor - Escolher servidor**, que lista os servidores
+  próximos com seus IDs e grava a escolha na configuração.
+- Campos `provedorContratado` e `planoContratado`, exibidos no painel de
+  conformidade para identificar o plano avaliado.
+
 ## [1.1.0] - 2026-07-30
 
 ### Adicionado

@@ -81,6 +81,13 @@ function renderCompliance(rows) {
   $("compliance").classList.toggle("hidden", active.length === 0);
   if (!active.length) return;
 
+  const plan = [state.config.provedorContratado, state.config.planoContratado]
+    .map(value => String(value || "").trim())
+    .filter(Boolean)
+    .join(" · ");
+  $("compliancePlan").textContent = plan;
+  $("compliancePlan").classList.toggle("hidden", !plan);
+
   const blocks = [];
   [["download", "Download"], ["upload", "Upload"]].forEach(([key, label]) => {
     const result = results[key];

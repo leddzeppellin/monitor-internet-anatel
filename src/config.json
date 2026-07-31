@@ -1,6 +1,9 @@
 {
+  "provedorContratado": "",
+  "planoContratado": "",
   "contratadoDownloadMbps": 0,
   "contratadoUploadMbps": 0,
+  "servidorFixoId": 0,
   "downloadMinMbps": 500,
   "uploadMinMbps": 500,
   "pingMaxMs": 50,

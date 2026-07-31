@@ -20,7 +20,12 @@ foreach ($task in $tasks) {
 }
 
 $desktop = [Environment]::GetFolderPath("Desktop")
-foreach ($name in @("Internet Monitor.lnk", "Internet Monitor - Testar agora.lnk")) {
+$shortcutNames = @(
+    "Internet Monitor.lnk",
+    "Internet Monitor - Testar agora.lnk",
+    "Internet Monitor - Escolher servidor.lnk"
+)
+foreach ($name in $shortcutNames) {
     $shortcut = Join-Path $desktop $name
     if (Test-Path -LiteralPath $shortcut) {
         Remove-Item -LiteralPath $shortcut -Force

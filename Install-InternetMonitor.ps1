@@ -184,6 +184,7 @@ Write-Step "Copiando os componentes"
 $sourcePath = Join-Path $PSScriptRoot "src"
 $files = @(
     "Collect-Internet.ps1",
+    "List-Servers.ps1",
     "Open-Dashboard.ps1",
     "Test-Now.ps1",
     "Update-DashboardData.ps1"
@@ -255,8 +256,10 @@ function New-DesktopShortcut([string]$Name, [string]$Script, [string]$WindowStyl
 }
 
 New-DesktopShortcut "Internet Monitor.lnk" "Open-Dashboard.ps1" "Hidden" 0
-# A medição sob demanda mostra o progresso, então a janela fica visível.
+# A medição sob demanda e a escolha de servidor são interativas, então a janela
+# precisa ficar visível.
 New-DesktopShortcut "Internet Monitor - Testar agora.lnk" "Test-Now.ps1" "Normal" 4
+New-DesktopShortcut "Internet Monitor - Escolher servidor.lnk" "List-Servers.ps1" "Normal" 22
 
 if (-not $NoInitialTest) {
     Write-Step "Executando a primeira medição (pode levar alguns minutos)"

@@ -32,12 +32,13 @@ precisa ter senha.
 3. Escolha **Executar como administrador** e confirme a janela do Windows.
 4. Aguarde a conclusão. A primeira medição pode levar alguns minutos.
 
-Dois atalhos são criados na Área de Trabalho:
+Três atalhos são criados na Área de Trabalho:
 
 | Atalho | O que faz |
 |---|---|
 | **Internet Monitor** | Abre o painel com o histórico |
 | **Internet Monitor - Testar agora** | Executa uma medição imediata e abre o painel |
+| **Internet Monitor - Escolher servidor** | Lista os servidores próximos e fixa um deles |
 
 > **Consumo de dados:** cada Speedtest transfere uma quantidade relevante de
 > dados — em um link de 500 Mbps, tipicamente entre 500 MB e 1,5 GB. No intervalo
@@ -46,10 +47,12 @@ Dois atalhos são criados na Área de Trabalho:
 
 ## Conformidade com o contrato
 
-Informe a velocidade contratada em `C:\InternetMonitor\config.json`:
+Informe o seu plano em `C:\InternetMonitor\config.json`:
 
 ```json
 {
+  "provedorContratado": "Vivo Fibra",
+  "planoContratado": "Plano 700 Mega",
   "contratadoDownloadMbps": 700,
   "contratadoUploadMbps": 350
 }
@@ -62,7 +65,31 @@ O painel passa a exibir dois indicadores por sentido, conforme a Resolução
 - **Velocidade instantânea** deve alcançar **40%** da contratada em pelo menos
   **95%** das medições.
 
-Deixe os valores em `0` para ocultar o painel.
+Deixe as velocidades em `0` para ocultar o painel. `provedorContratado` e
+`planoContratado` são apenas rótulos: identificam o plano no painel e não
+influenciam nenhum cálculo. O provedor realmente detectado em cada medição é
+gravado à parte, na coluna `ISP` do CSV.
+
+## Fixar o servidor de teste
+
+Por padrão o Speedtest escolhe o servidor "mais próximo" a cada execução. Isso
+atrapalha a comparação ao longo do tempo: uma queda no gráfico pode ser
+degradação real da sua conexão **ou** apenas outro servidor tendo sido
+escolhido.
+
+Use o atalho **Internet Monitor - Escolher servidor** para listar os servidores
+próximos e fixar um deles. Ou informe o ID direto na configuração:
+
+```json
+{
+  "servidorFixoId": 12345
+}
+```
+
+Use `0` para voltar à escolha automática. Se o servidor fixado estiver
+indisponível no momento da coleta, o teste é refeito automaticamente em modo
+automático e o desvio fica registrado em `logs\coleta-erros.log` — assim uma
+manutenção no servidor não interrompe o monitoramento.
 
 ## Uso
 
@@ -120,6 +147,7 @@ src/
   Update-DashboardData.ps1         Converte o CSV em data.js
   Open-Dashboard.ps1               Atualiza os dados e abre o painel
   Test-Now.ps1                     Medição sob demanda
+  List-Servers.ps1                 Lista e fixa o servidor de teste
   config.json                      Configuração padrão
   dashboard/                       Painel (HTML, CSS e JS sem dependências)
 ```
