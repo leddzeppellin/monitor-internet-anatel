@@ -2,6 +2,24 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [1.4.0] - 2026-07-31
+
+### Adicionado
+
+- **Exportação do relatório em PDF**, em duas vias: botão **Exportar PDF** no
+  painel, usando a impressão do navegador, e `Export-Report.ps1` (opção 6 do menu
+  de configuração), que gera o arquivo na Área de Trabalho com Edge ou Chrome em
+  segundo plano. Sem nenhum dos dois, o painel é aberto para impressão manual.
+- Layout de impressão dedicado: fundo claro, controles interativos ocultos,
+  quebras de página controladas e paleta de gráficos legível sobre papel.
+- Cabeçalho de relatório com plano contratado, provedor medido, período,
+  quantidade de medições, servidor de teste e data de emissão.
+- Resumo estatístico com **mínimo, p05, mediana, média, p95 e máximo** de cada
+  métrica. A média sozinha esconde a degradação de horário de pico; o p05 a
+  expõe.
+- O painel aceita `?hours=` e `?print=1` na URL, o que permite ao gerador de PDF
+  escolher o período e a paleta sem depender de interação.
+
 ## [1.3.1] - 2026-07-30
 
 ### Corrigido

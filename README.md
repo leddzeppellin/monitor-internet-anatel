@@ -73,6 +73,28 @@ Deixe as velocidades em `0` para ocultar o painel. `provedorContratado` e
 influenciam nenhum cálculo. O provedor realmente detectado em cada medição é
 gravado à parte, na coluna `ISP` do CSV.
 
+## Exportar o relatório em PDF
+
+Duas formas, ambas produzindo um PDF pronto para anexar em protocolo de
+reclamação:
+
+- No painel, botão **Exportar PDF** e, na janela de impressão, escolha
+  "Salvar como PDF".
+- Pelo atalho **Internet Monitor - Configurar**, opção 6, escolhendo o período.
+  O arquivo é gravado na Área de Trabalho e aberto em seguida.
+
+O documento traz o plano contratado, o período e a quantidade de medições, um
+resumo estatístico com **mínimo, p05, mediana, média, p95 e máximo** de cada
+métrica, o painel de conformidade, os gráficos e a tabela de medições.
+
+Os percentis importam mais que a média para avaliar um provedor: uma conexão que
+entrega bem quase o tempo todo e desaba no horário de pico mantém uma média
+confortável, e é o p05 que expõe a queda.
+
+A geração automática usa o Microsoft Edge (ou o Chrome) em segundo plano. Se
+nenhum dos dois for encontrado, o painel é aberto para você usar a impressão do
+navegador.
+
 ## Fixar o servidor de teste
 
 Por padrão o Speedtest escolhe o servidor "mais próximo" a cada execução. Isso
@@ -161,6 +183,7 @@ src/
   Open-Dashboard.ps1               Atualiza os dados e abre o painel
   Test-Now.ps1                     Medição sob demanda
   Configure-Monitor.ps1            Menu de configuração
+  Export-Report.ps1                Gera o relatório em PDF
   List-Servers.ps1                 Lista e fixa o servidor de teste
   config.json                      Configuração padrão
   dashboard/                       Painel (HTML, CSS e JS sem dependências)

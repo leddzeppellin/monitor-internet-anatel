@@ -230,9 +230,28 @@ function Show-Menu {
     Write-Host ("  3) Velocidade contratada ....... {0}" -f $speedLabel)
     Write-Host ("  4) Servidor de teste ........... {0}" -f $serverLabel)
     Write-Host ("  5) Limites do painel")
-    Write-Host ("  6) Abrir o painel")
+    Write-Host ("  6) Exportar relatório em PDF")
+    Write-Host ("  7) Abrir o painel")
     Write-Host ("  0) Sair")
     Write-Host ""
+}
+
+function Export-Report {
+    Write-Host ""
+    Write-Host "  Período do relatório:"
+    Write-Host "    1) últimas 24 horas"
+    Write-Host "    2) últimos 7 dias"
+    Write-Host "    3) últimos 30 dias  (recomendado)"
+    Write-Host "    4) todo o histórico"
+    Write-Host ""
+    $answer = Read-Host "  Escolha [3]"
+    $hours = switch ($answer.Trim()) {
+        "1" { 24 }
+        "2" { 168 }
+        "4" { 0 }
+        default { 720 }
+    }
+    & (Join-Path $Root "Export-Report.ps1") -Root $Root -Hours $hours
 }
 
 function Edit-Interval {
@@ -326,7 +345,8 @@ while ($true) {
         "3" { Edit-Speeds }
         "4" { & (Join-Path $Root "List-Servers.ps1") -Root $Root }
         "5" { Edit-Limits }
-        "6" { & (Join-Path $Root "Open-Dashboard.ps1") -Root $Root; return }
+        "6" { Export-Report }
+        "7" { & (Join-Path $Root "Open-Dashboard.ps1") -Root $Root; return }
         "0" { return }
         default { Write-Host "  Opção inválida." -ForegroundColor Yellow }
     }

@@ -118,6 +118,11 @@ td:last-child { max-width: 26ch; overflow: hidden; text-overflow: ellipsis; }
 .empty h2 { margin-top: 0; }
 .empty p { margin-bottom: 0; color: var(--muted); }
 .hidden { display: none !important; }
+/* O cabeçalho do relatório só faz sentido no documento impresso. */
+.report-header { display: none; }
+
+
+
 @media (max-width: 950px) {
   .metrics { grid-template-columns: repeat(3, 1fr); }
   .summary { grid-template-columns: repeat(2, 1fr); }
@@ -134,4 +139,92 @@ td:last-child { max-width: 26ch; overflow: hidden; text-overflow: ellipsis; }
 }
 @media (max-width: 430px) {
   .metrics, .summary { grid-template-columns: 1fr; }
+}
+
+@media print {
+  @page { size: A4 portrait; margin: 14mm 12mm; }
+
+  :root { color-scheme: light; }
+  body {
+    background: #fff !important;
+    color: #10202e;
+    font-size: 10pt;
+  }
+  .shell { width: 100%; padding: 0; }
+
+  /* Controles interativos não têm função no papel. */
+  .header-actions, .range-picker, .notice, .empty, .only-errors, .legend { display: none !important; }
+
+  .topbar { display: block; margin-bottom: 10mm; border-bottom: 1.5pt solid #10202e; padding-bottom: 4mm; }
+  .eyebrow { color: #41525f; }
+  h1 { font-size: 20pt; }
+  #freshness { color: #41525f; font-size: 9pt; }
+
+  .report-header { display: block; margin-bottom: 8mm; }
+  .report-header h2 { margin: 0 0 4mm; font-size: 14pt; }
+  .report-meta {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2mm 8mm; margin: 0 0 6mm;
+  }
+  .report-meta div { display: flex; gap: 2mm; border-bottom: .4pt solid #d8e0e7; padding-bottom: 1mm; }
+  .report-meta dt { color: #41525f; white-space: nowrap; }
+  .report-meta dt::after { content: ":"; }
+  .report-meta dd { margin: 0; font-weight: 600; }
+  .report-stats { width: 100%; border-collapse: collapse; font-size: 9pt; }
+  .report-stats th, .report-stats td { border: .4pt solid #c9d4de; padding: 1.5mm 2mm; text-align: right; }
+  .report-stats th { background: #eef3f7; color: #10202e; text-transform: none; letter-spacing: 0; font-size: 9pt; }
+  .report-stats th:first-child, .report-stats td:first-child { text-align: left; }
+
+  /* Sem isto o navegador descarta os fundos e as barras de conformidade somem. */
+  .metric, .summary article, .panel, .pill, .meter, .meter-fill, .report-stats th {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .metric, .summary article, .panel {
+    background: #fff !important; border: .5pt solid #c9d4de; border-radius: 3pt; box-shadow: none !important;
+  }
+  .metric strong, .panel-title h2, .summary strong, h1, td, th { color: #10202e; }
+  .metric span, .metric small, .summary span, .panel-title p, .muted { color: #41525f; }
+  /* Herdam cores claras pensadas para fundo escuro e sumiriam no papel. */
+  .panel-title .plan { color: #10202e !important; }
+  .compliance-item header span, .compliance-item small { color: #41525f; }
+  .metric.alert { border-color: #c62838; }
+
+  .metrics { grid-template-columns: repeat(5, 1fr); gap: 2mm; }
+  .metric { padding: 3mm; }
+  .metric strong { font-size: 13pt; }
+  .summary { grid-template-columns: repeat(4, 1fr); gap: 2mm; margin-top: 2mm; }
+  .summary article { padding: 2.5mm 3mm; }
+  .summary strong { font-size: 10pt; }
+
+  .compliance, .panel, .charts { margin-top: 4mm; }
+  .charts { grid-template-columns: 1fr; gap: 4mm; }
+  .canvas-wrap { height: 52mm; }
+  .compliance-item.pass header strong { color: #0f7a5f; }
+  .compliance-item.fail header strong { color: #c62838; }
+  .meter { background: #e4ebf1; }
+  .compliance-item.pass .meter-fill { background: #0f8c7e; }
+  .compliance-item.fail .meter-fill, .meter-fill { background: #c62838; }
+  .meter-target { background: #10202e; opacity: 1; }
+  .compliance-note, .compliance-note strong { color: #41525f; }
+
+  .pill { border: .5pt solid #10202e; color: #10202e !important; }
+  .pill.good { border-color: #0f7a5f; color: #0f7a5f !important; }
+  .pill.bad { border-color: #c62838; color: #c62838 !important; }
+  .pill.warn { border-color: #a86a00; color: #a86a00 !important; }
+
+  table { font-size: 8.5pt; }
+  th, td { border-bottom: .4pt solid #d8e0e7; padding: 1.2mm 1.5mm; }
+  th { color: #41525f; }
+  tbody a { text-decoration: none; color: #10202e; }
+  /* Sem limite de largura uma mensagem de erro longa empurraria a tabela para fora
+     da página, e o que sai da margem é simplesmente cortado no PDF. */
+  td:last-child { max-width: 34mm; white-space: normal; word-break: break-word; }
+  .status-ok { color: #0f7a5f; }
+  .status-error { color: #c62838; }
+
+  /* Evita quebrar um painel no meio da página. */
+  .panel, .compliance, .metrics, .summary { break-inside: avoid; page-break-inside: avoid; }
+  .table-panel { break-before: page; page-break-before: always; }
+  .table-scroll { overflow: visible; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
 }

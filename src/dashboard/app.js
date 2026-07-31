@@ -1,7 +1,10 @@
 "use strict";
 
-const state = { all: [], filtered: [], hours: 24, config: {}, meta: {} };
-const colors = { grid: "#20364a", text: "#8fa9bf", download: "#33d6c5", upload: "#4b8cff", ping: "#ffb84d", jitter: "#a889ff", loss: "#ff6577", failure: "rgba(255,101,119,.16)" };
+const state = { all: [], filtered: [], hours: 24, config: {}, meta: {}, printing: false };
+const screenColors = { grid: "#20364a", text: "#8fa9bf", download: "#33d6c5", upload: "#4b8cff", ping: "#ffb84d", jitter: "#a889ff", loss: "#ff6577", failure: "rgba(255,101,119,.16)" };
+// No papel o fundo é branco: as cores da tela ficariam ilegíveis.
+const printColors = { grid: "#c9d4de", text: "#41525f", download: "#0f8c7e", upload: "#1f5fd0", ping: "#a86a00", jitter: "#6b45c9", loss: "#c62838", failure: "rgba(198,40,56,.14)" };
+let colors = screenColors;
 const $ = (id) => document.getElementById(id);
 
 // Acima deste número de pontos os marcadores viram ruído visual e a linha basta.
@@ -36,6 +39,78 @@ const avg = (rows, key) => {
   const values = rows.map(r => r[key]).filter(Number.isFinite);
   return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 };
+
+// Para avaliar um provedor a média engana: uma conexão que entrega bem quase sempre e
+// desaba no horário de pico tem média boa. O que denuncia isso é a cauda inferior.
+function percentile(values, fraction) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const position = (sorted.length - 1) * fraction;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+}
+
+function statsFor(rows, key) {
+  const values = rows.map(row => row[key]).filter(Number.isFinite);
+  if (!values.length) return null;
+  return {
+    min: Math.min(...values),
+    p05: percentile(values, 0.05),
+    median: percentile(values, 0.5),
+    average: values.reduce((a, b) => a + b, 0) / values.length,
+    p95: percentile(values, 0.95),
+    max: Math.max(...values)
+  };
+}
+
+function renderReport(rows, successes, latest) {
+  const provider = String(state.config.provedorContratado || "").trim();
+  const plan = String(state.config.planoContratado || "").trim();
+  const contracted = [number(state.config.contratadoDownloadMbps), number(state.config.contratadoUploadMbps)];
+  const contractedText = contracted.some(v => Number.isFinite(v) && v > 0)
+    ? ` (${fmt(contracted[0] ?? 0, 0)}/${fmt(contracted[1] ?? 0, 0)} Mbps contratados)` : "";
+  $("reportPlan").textContent = ([provider, plan].filter(Boolean).join(" · ") || "não informado") + contractedText;
+
+  const providers = [...new Set(successes.map(r => r.isp).filter(Boolean))];
+  $("reportIsp").textContent = providers.join(", ") || "—";
+
+  const labels = { 24: "últimas 24 horas", 168: "últimos 7 dias", 720: "últimos 30 dias", 0: "todo o histórico" };
+  const first = rows.find(r => r.date), last = [...rows].reverse().find(r => r.date);
+  const span = first && last
+    ? `${first.date.toLocaleString("pt-BR")} a ${last.date.toLocaleString("pt-BR")}`
+    : "sem medições";
+  $("reportPeriod").textContent = `${labels[state.hours] ?? "período selecionado"} — ${span}`;
+
+  const failures = rows.length - successes.length;
+  $("reportSamples").textContent =
+    `${rows.length.toLocaleString("pt-BR")} no total, ${successes.length.toLocaleString("pt-BR")} com sucesso` +
+    (failures ? `, ${failures.toLocaleString("pt-BR")} com falha` : "");
+  $("reportGenerated").textContent = new Date().toLocaleString("pt-BR");
+
+  const servers = [...new Set(successes.map(r => r.server).filter(s => s && s !== "—"))];
+  const fixedId = number(state.config.servidorFixoId);
+  $("reportServer").textContent =
+    (servers.length === 1 ? servers[0] : `${servers.length} servidores diferentes`) +
+    (Number.isFinite(fixedId) && fixedId > 0 ? " (fixo)" : " (escolha automática)");
+
+  const metrics = [
+    { key: "download", label: "Download (Mbps)" },
+    { key: "upload", label: "Upload (Mbps)" },
+    { key: "ping", label: "Ping (ms)" },
+    { key: "jitter", label: "Jitter (ms)" },
+    { key: "loss", label: "Perda (%)" }
+  ];
+  $("reportStats").innerHTML = metrics.map(metric => {
+    const stats = statsFor(successes, metric.key);
+    if (!stats) return `<tr><td>${metric.label}</td><td colspan="6">sem dados</td></tr>`;
+    return `<tr><td>${metric.label}</td>` +
+      [stats.min, stats.p05, stats.median, stats.average, stats.p95, stats.max]
+        .map(value => `<td>${fmt(value, 2)}</td>`).join("") +
+      `</tr>`;
+  }).join("");
+}
 
 // Resolução Anatel 574/2011: a velocidade média do período deve alcançar 80% da
 // contratada e a instantânea, 40% em pelo menos 95% das medições.
@@ -145,6 +220,7 @@ function render() {
 
   const successes = rows.filter(r => r.status === "Sucesso");
   renderCompliance(successes);
+  renderReport(rows, successes, latest);
   $("downloadAvg").textContent = `${fmt(avg(successes, "download"))} Mbps`;
   $("uploadAvg").textContent = `${fmt(avg(successes, "upload"))} Mbps`;
   $("availability").textContent = rows.length ? `${fmt(successes.length * 100 / rows.length)}%` : "—";
@@ -375,18 +451,50 @@ function setNotice(message) {
   notice.classList.toggle("hidden", !message);
 }
 
-document.querySelectorAll(".range-picker button").forEach(button => button.addEventListener("click", () => {
-  document.querySelectorAll(".range-picker button").forEach(b => {
-    b.classList.remove("active");
-    b.setAttribute("aria-selected", "false");
+function selectRange(hours) {
+  let matched = false;
+  document.querySelectorAll(".range-picker button").forEach(button => {
+    const active = Number(button.dataset.hours) === hours;
+    if (active) matched = true;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
   });
-  button.classList.add("active");
-  button.setAttribute("aria-selected", "true");
-  state.hours = Number(button.dataset.hours);
+  if (!matched) return false;
+  state.hours = hours;
   applyRange();
-}));
+  return true;
+}
+
+document.querySelectorAll(".range-picker button").forEach(button =>
+  button.addEventListener("click", () => selectRange(Number(button.dataset.hours))));
 $("refreshButton").addEventListener("click", () => refresh(true));
+$("exportButton").addEventListener("click", () => window.print());
 $("onlyErrors").addEventListener("change", () => render());
+
+// O canvas não é afetado por CSS de impressão: as séries precisam ser redesenhadas
+// com uma paleta legível sobre papel branco.
+window.addEventListener("beforeprint", () => {
+  state.printing = true;
+  colors = printColors;
+  render();
+});
+window.addEventListener("afterprint", () => {
+  state.printing = false;
+  colors = screenColors;
+  render();
+});
+
+// Permite que o gerador de PDF escolha o período e a paleta pela URL. A geração em
+// modo headless não dispara beforeprint, então a paleta de impressão precisa de um
+// caminho explícito, sem depender do evento.
+const params = new URLSearchParams(location.search);
+if (params.get("print") === "1") {
+  state.printing = true;
+  colors = printColors;
+  document.body.classList.add("printing");
+}
+const requestedHours = Number(params.get("hours"));
+if (Number.isFinite(requestedHours) && requestedHours >= 0) selectRange(requestedHours);
 window.addEventListener("resize", () => render());
 load();
 

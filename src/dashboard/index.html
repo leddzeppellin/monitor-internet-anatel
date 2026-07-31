@@ -17,6 +17,7 @@
       <div class="header-actions">
         <span id="statusPill" class="pill neutral" role="status" aria-live="polite">Aguardando</span>
         <a id="historyLink" class="refresh hidden" href="../data/historico-internet.csv" target="_blank" rel="noreferrer">Abrir CSV</a>
+        <button id="exportButton" class="refresh" type="button" title="Gera um documento em PDF com o período selecionado">Exportar PDF</button>
         <button id="refreshButton" class="refresh" type="button">Atualizar</button>
       </div>
     </header>
@@ -29,6 +30,25 @@
     </section>
 
     <section id="dashboard" class="hidden">
+      <!-- Visível apenas na impressão: identifica o documento fora da tela. -->
+      <section id="reportHeader" class="report-header">
+        <h2>Relatório de qualidade da conexão</h2>
+        <dl class="report-meta">
+          <div><dt>Plano</dt><dd id="reportPlan">—</dd></div>
+          <div><dt>Provedor medido</dt><dd id="reportIsp">—</dd></div>
+          <div><dt>Período</dt><dd id="reportPeriod">—</dd></div>
+          <div><dt>Medições</dt><dd id="reportSamples">—</dd></div>
+          <div><dt>Emitido em</dt><dd id="reportGenerated">—</dd></div>
+          <div><dt>Servidor de teste</dt><dd id="reportServer">—</dd></div>
+        </dl>
+        <table class="report-stats">
+          <thead>
+            <tr><th>Métrica</th><th>Mínimo</th><th>p05</th><th>Mediana</th><th>Média</th><th>p95</th><th>Máximo</th></tr>
+          </thead>
+          <tbody id="reportStats"></tbody>
+        </table>
+      </section>
+
       <nav class="range-picker" role="tablist" aria-label="Período">
         <button data-hours="24" class="active" role="tab" aria-selected="true">24 horas</button>
         <button data-hours="168" role="tab" aria-selected="false">7 dias</button>

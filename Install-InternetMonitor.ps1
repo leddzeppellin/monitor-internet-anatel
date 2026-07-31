@@ -266,6 +266,7 @@ $sourcePath = Join-Path $PSScriptRoot "src"
 $files = @(
     "Collect-Internet.ps1",
     "Configure-Monitor.ps1",
+    "Export-Report.ps1",
     "List-Servers.ps1",
     "Open-Dashboard.ps1",
     "Test-Now.ps1",
