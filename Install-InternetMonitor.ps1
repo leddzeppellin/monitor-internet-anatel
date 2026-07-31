@@ -288,20 +288,8 @@ if (Test-Path -LiteralPath $configPath) {
         $config | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value -Force
     }
 }
-$previousInterval = if ($null -ne $config.collectionIntervalMinutes) {
-    [double]$config.collectionIntervalMinutes
-} else {
-    60
-}
-$previousAutomaticStale = [math]::Ceiling($previousInterval * 2.5)
-$staleWasAutomatic = ($null -eq $config.staleAfterMinutes) -or
-    ([math]::Abs([double]$config.staleAfterMinutes - $previousAutomaticStale) -lt 0.001)
-
-$config | Add-Member -NotePropertyName "collectionIntervalMinutes" -NotePropertyValue $IntervalMinutes -Force
-if ($staleWasAutomatic) {
-    $config | Add-Member -NotePropertyName "staleAfterMinutes" `
-        -NotePropertyValue ([int][math]::Ceiling($IntervalMinutes * 2.5)) -Force
-}
+# O intervalo e o limite de "dados desatualizados" são gravados adiante, junto com o
+# registro da tarefa, para que as duas coisas nunca fiquem em desacordo.
 $config | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $configPath -Encoding UTF8
 # config.json não é executado; liberar a escrita evita exigir elevação para ajustar
 # os limites do painel.
@@ -309,23 +297,14 @@ Grant-UserWrite $configPath
 
 Write-Step "Criando as tarefas automáticas"
 $powerShellExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-$collectorAction = New-ScheduledTaskAction -Execute $powerShellExe -Argument (
-    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $InstallPath "Collect-Internet.ps1")
-)
-# Trigger diário repetindo a cada N minutos ao longo de 24 horas. Uma repetição única
-# de duração muito longa (anos) é aceita pelo cmdlet mas o Agendador pode descartá-la,
-# deixando a tarefa sem registro nenhum.
-$collectorTrigger = New-ScheduledTaskTrigger -Daily -At "00:00"
-$collectorTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At "00:00" `
-    -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes) `
-    -RepetitionDuration (New-TimeSpan -Hours 24)).Repetition
-$collectorPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-$collectorSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
-    -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-Register-ScheduledTask -TaskName $TaskCollector -Action $collectorAction -Trigger $collectorTrigger `
-    -Principal $collectorPrincipal -Settings $collectorSettings -Description (
-        "Executa o Speedtest CLI a cada $IntervalMinutes minutos e grava o histórico local."
-    ) -Force | Out-Null
+
+# O registro da tarefa mora em Configure-Monitor.ps1, que é também quem o usuário aciona
+# depois pelo menu. Reaproveitar o mesmo caminho evita que instalação e reconfiguração
+# criem tarefas com definições diferentes.
+& (Join-Path $InstallPath "Configure-Monitor.ps1") -Root $InstallPath -SetIntervalMinutes $IntervalMinutes
+if ($LASTEXITCODE -ne 0) {
+    throw "Não foi possível registrar a tarefa '$TaskCollector'."
+}
 
 # O registro pode ser aceito e mesmo assim não resultar em tarefa: sem esta conferência
 # a instalação terminaria "com sucesso" e nenhuma coleta automática aconteceria.

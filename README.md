@@ -171,7 +171,8 @@ src/
 | Sintoma | O que verificar |
 |---|---|
 | Painel não abre | Execute o atalho novamente |
-| Sem medições novas | Confirme no Agendador se `InternetMonitor - Coleta` está habilitada |
+| Sem medições novas | Abra **Configurar** e veja o estado da coleta automática |
+| Coleta aparece como "configurada" sem detalhes | A tarefa foi criada por uma versão anterior e não é legível sem elevação; use a opção 1 uma vez para regravá-la |
 | Status `Erro` no painel | Consulte `logs\coleta-erros.log` |
 | Limites não mudaram | Feche a aba e reabra pelo atalho |
 | Resultado baixo isolado | Outro equipamento, Wi-Fi, VPN ou backup pode ter usado a conexão. A coluna **Conexão** ajuda a distinguir Wi-Fi de cabo |

@@ -2,6 +2,28 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [1.3.1] - 2026-07-30
+
+### Corrigido
+
+- O menu exibia "coleta automática: NÃO CONFIGURADA" mesmo com a tarefa criada e
+  funcionando. Uma tarefa registrada para `SYSTEM` nasce ilegível para contas
+  padrão: a consulta devolvia acesso negado e isso era interpretado como
+  ausência. A verificação passa a distinguir os dois casos pelo código de
+  resultado (`0x80070002` para inexistente, `0x80070005` para sem acesso), sem
+  depender do idioma do Windows.
+- O registro da tarefa passa a conceder leitura ao grupo Usuários, para que o
+  estado, o horário da próxima medição e o resultado da última fiquem visíveis
+  sem elevação. Alterar a tarefa continua exigindo administrador.
+- Instalação e menu passam a compartilhar o mesmo código de registro, evitando
+  que criem tarefas com definições diferentes.
+
+### Nota
+
+A versão 1.3.0 atribuiu à criação da tarefa uma falha que era, na verdade, de
+leitura. O gatilho diário introduzido lá foi mantido por ser mais convencional
+que a repetição de 3650 dias, mas não era a causa do problema relatado.
+
 ## [1.3.0] - 2026-07-30
 
 ### Adicionado

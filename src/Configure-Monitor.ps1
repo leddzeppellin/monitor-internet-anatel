@@ -54,6 +54,58 @@ function Read-Number([string]$Prompt, $Current, [double]$Min, [double]$Max) {
     return $parsed
 }
 
+# Uma tarefa registrada para SYSTEM nasce ilegível para contas padrão: consultá-la sem
+# elevação devolve "acesso negado", e o menu não conseguiria nem informar se a coleta
+# está ativa. Conceder leitura ao grupo Usuários resolve sem dar poder de alteração.
+function Grant-TaskRead {
+    try {
+        $service = New-Object -ComObject Schedule.Service
+        $service.Connect()
+        $task = $service.GetFolder("\").GetTask($TaskName)
+        $daclOnly = 4
+        $sddl = $task.GetSecurityDescriptor($daclOnly)
+        # 0x1200a9 é como o Windows normaliza GRGX depois de gravar.
+        if ($sddl -notmatch ";BU\)" ) {
+            $task.SetSecurityDescriptor($sddl + "(A;;GRGX;;;BU)", 0)
+        }
+    }
+    catch {
+        Write-Verbose ("Não foi possível liberar a leitura da tarefa: {0}" -f $_.Exception.Message)
+    }
+}
+
+# Distingue "não existe" de "existe mas não posso ler" pelo HResult, que não depende do
+# idioma do Windows: 0x80070002 é arquivo não encontrado e 0x80070005 é acesso negado.
+function Get-CollectorTaskState {
+    $state = [PSCustomObject]@{
+        Exists = $false; Readable = $false; State = ""
+        NextRun = $null; LastRun = $null; LastResult = $null
+    }
+    try {
+        $service = New-Object -ComObject Schedule.Service
+        $service.Connect()
+        $task = $service.GetFolder("\").GetTask($TaskName)
+        $state.Exists = $true
+        $state.Readable = $true
+        $state.State = switch ([int]$task.State) {
+            1 { "desativada" }
+            2 { "na fila" }
+            3 { "ativa" }
+            4 { "executando agora" }
+            default { "desconhecida" }
+        }
+        try { $state.NextRun = $task.NextRunTime } catch { }
+        try { $state.LastRun = $task.LastRunTime } catch { }
+        try { $state.LastResult = $task.LastTaskResult } catch { }
+    }
+    catch {
+        $exception = $_.Exception
+        while ($exception.InnerException) { $exception = $exception.InnerException }
+        if ($exception.HResult -eq 0x80070005) { $state.Exists = $true }
+    }
+    return $state
+}
+
 # Trigger diário repetindo a cada N minutos por 24 horas. É mais confiável que uma
 # repetição única de duração muito longa, que o Agendador rejeita em alguns casos.
 function Register-CollectorTask([int]$IntervalMinutes) {
@@ -77,6 +129,7 @@ function Register-CollectorTask([int]$IntervalMinutes) {
     if (-not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
         throw "A tarefa foi registrada mas não pôde ser localizada em seguida."
     }
+    Grant-TaskRead
 }
 
 function Set-Interval([int]$Minutes) {
@@ -125,17 +178,27 @@ if ($SetIntervalMinutes -gt 0) {
 # Menu
 # ---------------------------------------------------------------------------
 function Show-TaskStatus {
-    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    if (-not $task) {
+    $task = Get-CollectorTaskState
+
+    if (-not $task.Exists) {
         Write-Host "  Coleta automática: NÃO CONFIGURADA" -ForegroundColor Red
         Write-Host "                     use a opção 1 para criar a tarefa" -ForegroundColor Red
         return
     }
-    $info = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction SilentlyContinue
-    $color = if ($task.State -eq "Disabled") { "Yellow" } else { "Green" }
+    if (-not $task.Readable) {
+        Write-Host "  Coleta automática: configurada" -ForegroundColor Green
+        Write-Host "                     execute a opção 1 uma vez para poder ver os detalhes"
+        return
+    }
+
+    $color = if ($task.State -eq "desativada") { "Yellow" } else { "Green" }
     Write-Host ("  Coleta automática: {0}" -f $task.State) -ForegroundColor $color
-    if ($info -and $info.NextRunTime) {
-        Write-Host ("                     próxima em {0}" -f $info.NextRunTime)
+    if ($task.NextRun -and $task.NextRun.Year -gt 1900) {
+        Write-Host ("                     próxima medição em {0}" -f $task.NextRun)
+    }
+    if ($task.LastRun -and $task.LastRun.Year -gt 1900) {
+        $outcome = if ($task.LastResult -eq 0) { "sucesso" } else { "código $($task.LastResult)" }
+        Write-Host ("                     última execução {0} ({1})" -f $task.LastRun, $outcome)
     }
 }
 
