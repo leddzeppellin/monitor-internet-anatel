@@ -2,6 +2,21 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [1.2.2] - 2026-07-30
+
+### Corrigido
+
+- A primeira medição falhava com "não é possível associar o argumento ao
+  parâmetro 'Path'". Executado com `-File`, o PowerShell avalia os valores padrão
+  dos parâmetros antes de popular `$PSScriptRoot`, então `$Root` chegava vazio.
+  Afetava a tarefa agendada e os dois atalhos de linha de comando.
+- Nomes de servidor e cidade com acento eram gravados corrompidos no histórico
+  (`Anastácio` virava `AnastÃ¡cio`): o Speedtest emite JSON em UTF-8 e o padrão
+  do `Get-Content` no PS 5.1 é ANSI.
+- As métricas eram gravadas com o separador decimal da cultura ativa. Como a
+  coleta roda ora como `SYSTEM`, ora como o usuário, o mesmo CSV podia misturar
+  `599,56` e `599.56`. Agora a formatação é invariante, sempre com ponto.
+
 ## [1.2.1] - 2026-07-30
 
 ### Corrigido

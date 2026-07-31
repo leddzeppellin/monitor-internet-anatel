@@ -1,11 +1,14 @@
 ﻿[CmdletBinding()]
 param(
-    [string]$Root = $PSScriptRoot,
+    [string]$Root,
     [ValidateRange(1, 50000)]
     [int]$MaxRows = 5000
 )
 
 $ErrorActionPreference = "Stop"
+# Com -File, o padrão de um parâmetro é avaliado antes de $PSScriptRoot existir.
+if (-not $Root) { $Root = $PSScriptRoot }
+
 $csvPath = Join-Path $Root "data\historico-internet.csv"
 $configPath = Join-Path $Root "config.json"
 $dashboardPath = Join-Path $Root "dashboard"

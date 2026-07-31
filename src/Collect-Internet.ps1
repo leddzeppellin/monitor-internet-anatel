@@ -1,9 +1,13 @@
 ﻿[CmdletBinding()]
 param(
-    [string]$Root = $PSScriptRoot
+    [string]$Root
 )
 
 $ErrorActionPreference = "Stop"
+# Invocado com -File, o PowerShell avalia os valores padrão dos parâmetros antes de
+# popular $PSScriptRoot, e o padrão sairia vazio. No corpo do script ele já é válido.
+if (-not $Root) { $Root = $PSScriptRoot }
+
 $DataPath = Join-Path $Root "data"
 $LogPath = Join-Path $Root "logs"
 $CsvPath = Join-Path $DataPath "historico-internet.csv"
@@ -83,6 +87,14 @@ function Save-Record([psobject]$Record) {
     }
 }
 
+# A coleta roda ora como SYSTEM, ora como o usuário, e cada contexto pode ter uma
+# cultura diferente. Sem formatação invariante, o mesmo CSV acabaria misturando
+# "599,56" e "599.56".
+function Format-Metric($Value) {
+    if ($null -eq $Value) { return "" }
+    return [math]::Round([double]$Value, 2).ToString([System.Globalization.CultureInfo]::InvariantCulture)
+}
+
 function Get-FixedServerId {
     if (-not (Test-Path -LiteralPath $ConfigPath)) { return 0 }
     try {
@@ -117,8 +129,10 @@ function Invoke-Speedtest([int]$ServerId) {
             throw "O Speedtest excedeu o limite de 8 minutos."
         }
         $process.WaitForExit()
-        $stdout = Get-Content -LiteralPath $tempOut -Raw -ErrorAction SilentlyContinue
-        $stderr = Get-Content -LiteralPath $tempErr -Raw -ErrorAction SilentlyContinue
+        # O Speedtest emite UTF-8 sem BOM e o padrão do Get-Content no PS 5.1 é ANSI,
+        # o que corromperia acentos em nomes de servidor e cidade.
+        $stdout = Get-Content -LiteralPath $tempOut -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+        $stderr = Get-Content -LiteralPath $tempErr -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
         if ($process.ExitCode -ne 0) {
             throw "Speedtest retornou código $($process.ExitCode): $stderr"
         }
@@ -203,20 +217,14 @@ try {
     }
 
     $result = $stdout | ConvertFrom-Json
-    $loss = if ($null -ne $result.packetLoss) {
-        [math]::Round([double]$result.packetLoss, 2)
-    } else { "" }
-    $jitter = if ($null -ne $result.ping.jitter) {
-        [math]::Round([double]$result.ping.jitter, 2)
-    } else { "" }
 
     $record = [PSCustomObject][ordered]@{
         DataHora = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-        DownloadMbps = [math]::Round(([double]$result.download.bandwidth * 8 / 1000000), 2)
-        UploadMbps = [math]::Round(([double]$result.upload.bandwidth * 8 / 1000000), 2)
-        PingMs = [math]::Round([double]$result.ping.latency, 2)
-        JitterMs = $jitter
-        PerdaPacotesPct = $loss
+        DownloadMbps = Format-Metric ([double]$result.download.bandwidth * 8 / 1000000)
+        UploadMbps = Format-Metric ([double]$result.upload.bandwidth * 8 / 1000000)
+        PingMs = Format-Metric $result.ping.latency
+        JitterMs = Format-Metric $result.ping.jitter
+        PerdaPacotesPct = Format-Metric $result.packetLoss
         ISP = [string]$result.isp
         Servidor = [string]$result.server.name
         ServidorID = [string]$result.server.id

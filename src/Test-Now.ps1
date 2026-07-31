@@ -1,9 +1,11 @@
 ﻿[CmdletBinding()]
 param(
-    [string]$Root = $PSScriptRoot
+    [string]$Root
 )
 
 $ErrorActionPreference = "Stop"
+# Com -File, o padrão de um parâmetro é avaliado antes de $PSScriptRoot existir.
+if (-not $Root) { $Root = $PSScriptRoot }
 
 Write-Host ""
 Write-Host "  Internet Monitor - medicao sob demanda" -ForegroundColor Cyan

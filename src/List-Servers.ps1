@@ -1,9 +1,12 @@
 ﻿[CmdletBinding()]
 param(
-    [string]$Root = $PSScriptRoot
+    [string]$Root
 )
 
 $ErrorActionPreference = "Stop"
+# Com -File, o padrão de um parâmetro é avaliado antes de $PSScriptRoot existir.
+if (-not $Root) { $Root = $PSScriptRoot }
+
 $speedtestExe = Join-Path $Root "bin\speedtest.exe"
 $configPath = Join-Path $Root "config.json"
 
@@ -16,7 +19,16 @@ Write-Host "  Servidores de teste mais próximos de você" -ForegroundColor Cyan
 Write-Host "  Consultando a Ookla..."
 Write-Host ""
 
-$output = & $speedtestExe --servers --format=json 2>&1
+# A saída de um processo é decodificada com a codepage do console, que fora do UTF-8
+# corromperia acentos nos nomes de cidade.
+$previousEncoding = [Console]::OutputEncoding
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $output = & $speedtestExe --servers --format=json 2>&1
+}
+finally {
+    [Console]::OutputEncoding = $previousEncoding
+}
 if ($LASTEXITCODE -ne 0) {
     throw "O Speedtest não conseguiu listar os servidores: $output"
 }
